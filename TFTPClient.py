@@ -60,9 +60,9 @@ def receive_packet(sock, blksize):
         return opcode, data[4:], address, len(data)
     return opcode, data[2:]
 
-def send_packet(sock, blksize, data, blknum):
+def send_packet(sock, data, blknum, serverAddress):
     data_packet = struct.pack('!H', 3) + struct.pack('!H', blknum) + data
-    
+    sock.sendto(data_packet, serverAddress)
 
 def receive_oack(sock):
     data, address = sock.recvfrom(516)
@@ -73,12 +73,18 @@ def receive_oack(sock):
     print(data[2:].decode('utf-8'))
     return None, address
 
+def receive_ack(sock, expectedblknum):
+    ack, address = sock.recvfrom(4)
+    print(ack)
+    opcode, blknum = struct.unpack('!HH',ack)
+    if opcode == 4 and blknum == expectedblknum:
+        return True
+    return False
+
 def send_ack(sock, blknum, server_address):
     ack_packet = struct.pack('!HH', 4, blknum)
     sock.sendto(ack_packet, server_address)
 
-def send_packet(sock, opcode, blknum, data):
-    sock.send(data)
 
 def downloadfile(sock, sa):
     clientSocket = sock
@@ -104,12 +110,9 @@ def downloadfile(sock, sa):
             # Receive data packet from the server
             opcode, received_data, server_address, size = receive_packet(clientSocket, blksize)
             if opcode == 3:  # Data packet
-                # Process the received data (write to file, print, etc.)
                 print(f"Received data block {blknum}")
                 bfile.write(received_data)
-                # ...
 
-                # Send acknowledgment
                 send_ack(clientSocket, blknum, server_address)
 
                 blknum += 1
@@ -143,20 +146,32 @@ def uploadfile(sock, sa):
         file = open(filename, 'rb')
         filedata = file.read()
         print(type(filedata))
+
+        while True:
+            blksize = int(input("Enter desired block size (Default - 512): "))
+            if blksize >= 8 and blksize <= 65464:
+                break
+            else:
+                print("Invalid Block Size! Input another value between 8 and 65464.")
+        send_request(clientSocket, WRQ, filename, server_address, blksize)
+        if blksize != 512:
+            blksize, server_address = receive_oack(clientSocket)
+        if blksize != None:
+            #Split to multiple segments depending on block size
+            curr_block = 1
+            for i in range(0, len(filedata), blksize):
+                data = filedata[i:i+blksize]
+                send_packet(clientSocket, data, curr_block, server_address)
+                while not receive_ack(clientSocket, curr_block):
+                    send_packet(clientSocket, data, curr_block, server_address)
+                
+                print(f'Block #: {curr_block}')
+                print(f'Data Length: {len(data)}')
+                curr_block += 1
     except Exception as e:
-        print(e)
-    while True:
-        blksize = int(input("Enter desired block size (Default - 512): "))
-        if blksize >= 8 and blksize <= 65464:
-            break
-        else:
-            print("Invalid Block Size! Input another value between 8 and 65464.")
-    send_request(clientSocket, WRQ, filename, server_address, blksize)
-    if blksize != 512:
-        blksize, server_address = receive_oack(clientSocket)
-        send_ack(clientSocket, 0, server_address)
+            print(e)
+   
         
-    #Split to multiple segments depending on block size
 
 
 
