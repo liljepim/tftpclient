@@ -1,0 +1,6 @@
+#ignore bin and jpg files
+*.bin
+*.jpg
+*.java
+tester.py
+
